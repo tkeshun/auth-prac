@@ -1,0 +1,125 @@
+name: ory
+services:
+  consent:
+    environment:
+      HYDRA_ADMIN_URL: http://hydra:4445
+    image: oryd/hydra-login-consent-node:v2.3.0
+    networks:
+      intranet: null
+    ports:
+      - mode: ingress
+        target: 3000
+        published: "3000"
+        protocol: tcp
+    restart: unless-stopped
+  hydra:
+    build:
+      context: /home/shun/workspace/auth-prac/ory
+      dockerfile: .docker/Dockerfile-local-build
+    command:
+      - serve
+      - -c
+      - /etc/config/hydra/hydra.yml
+      - all
+      - --dev
+    depends_on:
+      hydra-migrate:
+        condition: service_started
+        required: true
+      sqlite:
+        condition: service_started
+        required: true
+    environment:
+      DSN: postgres://hydra:secret@postgresd:5432/hydra?sslmode=disable&max_conns=20&max_idle_conns=4
+    image: oryd/hydra:v2.3.0
+    networks:
+      intranet: null
+    ports:
+      - mode: ingress
+        target: 4444
+        published: "4444"
+        protocol: tcp
+      - mode: ingress
+        target: 4445
+        published: "4445"
+        protocol: tcp
+      - mode: ingress
+        target: 5555
+        published: "5555"
+        protocol: tcp
+    pull_policy: missing
+    restart: unless-stopped
+    volumes:
+      - type: volume
+        source: hydra-sqlite
+        target: /mnt/sqlite
+        volume: {}
+      - type: bind
+        source: /home/shun/workspace/auth-prac/ory/contrib/quickstart/5-min
+        target: /etc/config/hydra
+  hydra-migrate:
+    build:
+      context: /home/shun/workspace/auth-prac/ory
+      dockerfile: .docker/Dockerfile-local-build
+    command:
+      - migrate
+      - -c
+      - /etc/config/hydra/hydra.yml
+      - sql
+      - up
+      - -e
+      - --yes
+    depends_on:
+      sqlite:
+        condition: service_started
+        required: true
+    environment:
+      DSN: postgres://hydra:secret@postgresd:5432/hydra?sslmode=disable&max_conns=20&max_idle_conns=4
+    image: oryd/hydra:v2.3.0
+    networks:
+      intranet: null
+    pull_policy: missing
+    restart: on-failure
+    volumes:
+      - type: volume
+        source: hydra-sqlite
+        target: /mnt/sqlite
+        volume: {}
+      - type: bind
+        source: /home/shun/workspace/auth-prac/ory/contrib/quickstart/5-min
+        target: /etc/config/hydra
+  postgresd:
+    environment:
+      POSTGRES_DB: hydra
+      POSTGRES_PASSWORD: secret
+      POSTGRES_USER: hydra
+    image: postgres:16
+    networks:
+      intranet: null
+    ports:
+      - mode: ingress
+        target: 5432
+        published: "5432"
+        protocol: tcp
+  sqlite:
+    command:
+      - chmod
+      - -R
+      - "777"
+      - /mnt/sqlite
+    image: busybox
+    networks:
+      default: null
+    volumes:
+      - type: volume
+        source: hydra-sqlite
+        target: /mnt/sqlite
+        volume: {}
+networks:
+  default:
+    name: ory_default
+  intranet:
+    name: ory_intranet
+volumes:
+  hydra-sqlite:
+    name: ory_hydra-sqlite
