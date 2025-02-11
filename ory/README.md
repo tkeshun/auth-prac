@@ -261,6 +261,115 @@ docker compose -f quickstart.yml exec hydra \
 認可を許可すると、アプリ(3000)から5555/callbackにリダイレクトされ
 
 ## その他  
+
+### k8s
+
+Helm Chartあり
+
+### 分散トレース
+https://www.ory.sh/docs/self-hosted/operations/tracing  
+
+対応してる
+
+トレースとれるようにしたときのcompose.yml
+otel-collectorも使ってみようとしたがなぜかできなかった、原因究明はまたこんど
+
+```
+services:
+  sqlite:
+    image: busybox
+    volumes:
+    - hydra-sqlite:/mnt/sqlite
+    command: "chmod -R 777 /mnt/sqlite"
+  hydra:
+    image: oryd/hydra:v2.3.0
+    build:
+      context: .
+      dockerfile: .docker/Dockerfile-local-build
+    ports:
+    - "4444:4444" # Public port
+    - "4445:4445" # Admin port
+    - "5555:5555" # Port for hydra token user
+    command: serve -c /etc/config/hydra/hydra.yml all --dev
+    volumes:
+    - hydra-sqlite:/mnt/sqlite:rw
+    - type: bind
+      source: ./contrib/quickstart/5-min
+      target: /etc/config/hydra
+    pull_policy: missing
+    environment:
+    - DSN=sqlite:///mnt/sqlite/db.sqlite?_fk=true&mode=rwc
+    - TRACING_PROVIDER=jaeger
+    - TRACING_PROVIDERS_JAEGER_SAMPLING_SERVER_URL=http://jaeger:5778/sampling
+    - TRACING_PROVIDERS_JAEGER_LOCAL_AGENT_ADDRESS=jaeger:6831
+    - TRACING_PROVIDERS_JAEGER_SAMPLING_TRACE_ID_RATIO=1
+    restart: unless-stopped
+    depends_on:
+    - hydra-migrate
+    - sqlite
+    - jaeger
+    networks:
+    - intranet
+  hydra-migrate:
+    image: oryd/hydra:v2.3.0
+    build:
+      context: .
+      dockerfile: .docker/Dockerfile-local-build
+    environment:
+    - DSN=sqlite:///mnt/sqlite/db.sqlite?_fk=true&mode=rwc
+    command: migrate -c /etc/config/hydra/hydra.yml sql up -e --yes
+    pull_policy: missing
+    volumes:
+    - hydra-sqlite:/mnt/sqlite:rw
+    - type: bind
+      source: ./contrib/quickstart/5-min
+      target: /etc/config/hydra
+    restart: on-failure
+    networks:
+    - intranet
+    depends_on:
+    - sqlite
+  consent:
+    environment:
+    - HYDRA_ADMIN_URL=http://hydra:4445
+    image: oryd/hydra-login-consent-node:v2.3.0
+    ports:
+    - "3000:3000"
+    restart: unless-stopped
+    networks:
+    - intranet
+  jaeger:
+    image: jaegertracing/all-in-one:1.19.2
+    ports:
+    - "16686:16686" # The UI port
+    networks:
+    - intranet
+networks:
+  intranet:
+volumes:
+  hydra-sqlite:
+```
+
+### prometheusのエンドポイント
+http://{host}:4445/admin/metrics/prometheus
+
+### ログ
+https://www.ory.sh/docs/self-hosted/operations/logging  
+ログ出力は stdout/stderr に送信される
+ログの送信先を変更するオプションはない
+
+### データベース  
+https://www.ory.sh/docs/self-hosted/deployment
+
+#### インメモリ  
+DSNをmemoryにする
+
+#### 永続化
+
+PostgreSQL、MySQL、SQLite、CockroachDBをサポート
+
+
+
 ### 認証フロー
 - Authorization Code Flow	クライアントがユーザーの認可を得てアクセストークンを取得する
 - Client Credentials Flow	クライアント自身がアクセストークンを取得する

@@ -1,0 +1,28 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: "0.0.0.0:14317" # ← 修正
+      http:
+        endpoint: "0.0.0.0:14318" # ← 修正
+
+processors:
+  batch:
+    timeout: 1s
+    send_batch_size: 1024
+
+exporters:
+  otlp:
+    endpoint: "http://jaeger:14250"
+    tls:
+      insecure: true # `insecure: true` の代わり
+
+  debug:
+    # ✅ `logging` を `debug` に変更
+    verbosity: detailed # オプションを適用
+service:
+  pipelines:
+    traces:
+      receivers: [ otlp ]
+      processors: [ batch ]
+      exporters: [ otlp, debug ]
