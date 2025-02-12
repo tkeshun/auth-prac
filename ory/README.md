@@ -360,7 +360,8 @@ curlだと無理なので、受け取り用サーバーが必要
 
 
 ログインプロバイダーの用意も必要
-
+ory/mock-server/main.go
+起動する
 
 ```
 CODE_VERIFIER=$(openssl rand -base64 48 | tr -d '=+/')
@@ -422,10 +423,13 @@ curl -X POST "http://localhost:4444/oauth2/token" \
   -d "code_verifier=$CODE_VERIFIER"
 ```
 
+userinfoの取得  
+```
 ACCESS_TOKEN="ory_at_sBrtvEN3bAGPezyHFfzbHDsLXkLZnFbKauEGfSKe8ak.85HBFtsPM1N0oOSh_abeqHc6Scph_ODYu_3W3ib1aUU"
 
 curl -X GET "http://localhost:4444/userinfo" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
+```
 
 ## その他  
 

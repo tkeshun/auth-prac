@@ -10,8 +10,8 @@ serve:
 #   logout: http://127.0.0.1:3000/logout
 
 urls:
-  login: http://localhost:3000/login
-  consent: http://localhost:3000/consent
+  login: http://localhost:8080/login
+  consent: http://localhost:8080/consent
   self:
     issuer: http://localhost:4444
 
