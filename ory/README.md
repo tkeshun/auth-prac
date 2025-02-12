@@ -192,6 +192,35 @@ docker compose -f quickstart.yml exec hydra \
 ##  OAuth 2.0 Authorization Code Grant の実行
 認可コードグラント  
 
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Client
+    participant Hydra
+    participant AuthServer as Authorization Server
+    participant TokenServer as Token Server
+    participant ResourceServer as Resource Server
+
+    Note over User,Client: 1. 認可リクエスト
+    User->>Client: アプリにログインリクエスト
+    Client->>AuthServer: /oauth2/auth?client_id=my-client&response_type=code&redirect_uri=http://localhost:3000/callback&scope=openid profile&code_challenge={code_challenge}&code_challenge_method=S256
+    AuthServer->>User: ログイン画面表示
+    User->>AuthServer: 認証情報を入力（ID, PW）
+    AuthServer->>User: 認可画面表示
+    User->>AuthServer: 同意
+    AuthServer->>Client: 認可コード発行（リダイレクト）
+
+    Note over Client,TokenServer: 2. 認可コードをトークンに交換
+    Client->>TokenServer: /oauth2/token (grant_type=authorization_code, code=XXXXXX, redirect_uri, code_verifier)
+    TokenServer->>Client: アクセストークン、IDトークン発行
+
+    Note over Client,ResourceServer: 3. APIアクセス
+    Client->>ResourceServer: Authorization: Bearer {access_token}
+    ResourceServer->>Client: リソースを返す
+
+```
+
 ### クライアントに対応するclient情報の払い出し
 
 ```
@@ -235,7 +264,11 @@ code_client_id=$(echo $code_client | jq -r '.client_id')
 code_client_secret=$(echo $code_client | jq -r '.client_secret')
 ```
 
-### 認可コードフローの実行
+### 認可コードフローの実行（ドキュメント）
+
+↓手動テストやデモをやるコマンドらしい
+https://www.ory.sh/docs/hydra/cli/hydra-perform-authorization-code
+
 
 ```
 docker compose -f quickstart.yml exec hydra \
@@ -259,6 +292,127 @@ docker compose -f quickstart.yml exec hydra \
 メアドとパスワードは枠の横に書いてある。
 
 認可を許可すると、アプリ(3000)から5555/callbackにリダイレクトされ
+
+### 認証コードフローの実行（APIベース）の調査
+
+- エンドポイント
+
+認可リクエスト  
+GET /oauth2/auth
+client_id	クライアントのID
+response_type=code	認可コードフローを示す
+redirect_uri	認可後のリダイレクト先
+scope	要求するスコープ
+state	CSRF対策用の値
+
+アクセストークン発行
+POST /oauth2/token
+
+grant_type=authorization_code	認可コードフローを指定
+code	/oauth2/auth で発行された認可コード
+redirect_uri	認可リクエストで指定したリダイレクトURI
+client_id	クライアントID
+client_secret	クライアントシークレット（機密クライアントのみ）
+
+トークンの有効性確認・詳細確認
+POST /oauth2/introspect
+token	確認したいトークン
+client_id	クライアントID
+client_secret	クライアントシークレット
+
+トークンの失効
+POST /oauth2/revoke
+
+## 認可コードフロー+PKCEをやってみる
+
+クライアントの登録  
+```
+code_client=$(docker compose -f quickstart.yml exec hydra \
+    hydra create client \
+    --endpoint http://127.0.0.1:4445 \
+    --id my-client \
+    --grant-type authorization_code,refresh_token \
+    --response-type code,id_token \
+    --format json \
+    --scope openid --scope profile --scope offline \
+    --redirect-uri http://127.0.0.1:5555/callback)
+```
+
+登録の確認
+```
+docker compose -f quickstart.yml exec hydra \
+    hydra get client my-client --endpoint http://127.0.0.1:4445
+```
+
+Goのプログラムでうまくできないので、一旦放置
+
+## curlでPKCEやる
+
+code_verifier と code_challenge を生成。
+/oauth2/auth へリダイレクトして認可コードを取得。
+GET /oauth2/auth/requests/login で認証リクエストを取得。
+PUT /oauth2/auth/requests/login/accept でログインを承認。
+/oauth2/token でアクセストークンを取得（code_verifier を利用）。
+access_token を使ってAPIにアクセス。
+
+Hydra登録時のredirect_uriは認可コードを受け取るところを指定する。
+curlだと無理なので、受け取り用サーバーが必要
+
+
+ログインプロバイダーの用意も必要
+
+
+```
+CODE_VERIFIER=$(openssl rand -base64 32 | tr -d '=+/')
+CODE_CHALLENGE=$(echo -n $CODE_VERIFIER | sha256sum | awk '{print $1}' | xxd -r -p | base64 | tr -d '=+/')
+
+echo "CODE_VERIFIER: $CODE_VERIFIER"
+echo "CODE_CHALLENGE: $CODE_CHALLENGE"
+```
+
+
+クライアント登録
+```
+curl -X POST "http://localhost:4445/admin/clients" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "client_id": "test-client",
+    "grant_types": ["authorization_code"],
+    "redirect_uris": ["http://localhost:5555/callback"],
+    "response_types": ["code"],
+    "scope": "openid profile",
+    "token_endpoint_auth_method": "none"
+  }'
+```
+
+
+認可リクエスト
+```
+STATE=$(openssl rand -hex 16)
+AUTH_URL="http://localhost:4444/oauth2/auth?response_type=code&client_id=test-client&redirect_uri=http://localhost:5555/callback&scope=openid profile&code_challenge=$CODE_CHALLENGE&code_challenge_method=S256&state=$STATE"
+
+echo "以下のURLをブラウザで開いて認可コードを取得してください:"
+echo "$AUTH_URL"
+```
+
+アクセストークンの取得
+
+```
+AUTH_CODE="<ブラウザで取得した認可コード>"
+
+curl -X POST "http://localhost:4444/oauth2/token" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "grant_type=authorization_code" \
+  -d "client_id=test-client" \
+  -d "redirect_uri=http://localhost:5555/callback" \
+  -d "code=$AUTH_CODE" \
+  -d "code_verifier=$CODE_VERIFIER"
+```
+
+```
+
+```
+
 
 ## その他  
 
