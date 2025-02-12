@@ -363,11 +363,12 @@ curlだと無理なので、受け取り用サーバーが必要
 
 
 ```
-CODE_VERIFIER=$(openssl rand -base64 32 | tr -d '=+/')
+CODE_VERIFIER=$(openssl rand -base64 48 | tr -d '=+/')
 CODE_CHALLENGE=$(echo -n $CODE_VERIFIER | sha256sum | awk '{print $1}' | xxd -r -p | base64 | tr -d '=+/')
 
 echo "CODE_VERIFIER: $CODE_VERIFIER"
 echo "CODE_CHALLENGE: $CODE_CHALLENGE"
+
 ```
 
 
@@ -409,10 +410,22 @@ curl -X POST "http://localhost:4444/oauth2/token" \
   -d "code_verifier=$CODE_VERIFIER"
 ```
 
-```
 
 ```
+AUTH_CODE="ory_ac_qBYjIvWeG07PSRUsw0YxtOFEmo9sJ9DdHqNIj_Czk4Q.-lKM2qLvlleeTe3_WZinn6nzYecN_GBUHrjs5U8ZMpM"
+curl -X POST "http://localhost:4444/oauth2/token" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "grant_type=authorization_code" \
+  -d "client_id=test-client" \
+  -d "redirect_uri=http://localhost:5555/callback" \
+  -d "code=$AUTH_CODE" \
+  -d "code_verifier=$CODE_VERIFIER"
+```
 
+ACCESS_TOKEN="ory_at_sBrtvEN3bAGPezyHFfzbHDsLXkLZnFbKauEGfSKe8ak.85HBFtsPM1N0oOSh_abeqHc6Scph_ODYu_3W3ib1aUU"
+
+curl -X GET "http://localhost:4444/userinfo" \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
 
 ## その他  
 
