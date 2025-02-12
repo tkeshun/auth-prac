@@ -348,13 +348,6 @@ Goのプログラムでうまくできないので、一旦放置
 
 ## curlでPKCEやる
 
-code_verifier と code_challenge を生成。
-/oauth2/auth へリダイレクトして認可コードを取得。
-GET /oauth2/auth/requests/login で認証リクエストを取得。
-PUT /oauth2/auth/requests/login/accept でログインを承認。
-/oauth2/token でアクセストークンを取得（code_verifier を利用）。
-access_token を使ってAPIにアクセス。
-
 Hydra登録時のredirect_uriは認可コードを受け取るところを指定する。
 curlだと無理なので、受け取り用サーバーが必要
 
